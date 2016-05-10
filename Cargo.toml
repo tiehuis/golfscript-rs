@@ -1,0 +1,17 @@
+[package]
+name = "golfscript"
+version = "0.1.0"
+authors = ["tiehuis <marctiehuis@gmail.com>"]
+
+[dependencies]
+rand = "0.3"
+itertools = "0.4.13"
+copperline = "0.3.0"
+
+[lib]
+name = "golfscript"
+path = "src/lib.rs"
+
+[[bin]]
+name = "golfscript-frontend"
+path = "src/main.rs"

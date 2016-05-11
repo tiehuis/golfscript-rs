@@ -5,7 +5,7 @@ extern crate itertools;
 extern crate rand;
 
 use rand::distributions::{IndependentSample, Range};
-use std::{str, iter};
+use std::{fmt, str, iter};
 use itertools::Itertools;
 
 type CharStream<'a> = iter::Peekable<str::Chars<'a>>;
@@ -26,6 +26,29 @@ pub enum Item {
     Str(String),
     Array(Box<[Item]>),
     Block(Box<[Item]>),
+}
+
+/// Allow `to_string` conversion for `Item`'s
+impl fmt::Display for Item {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Item::Num(ref x) => write!(f, "{}", x),
+            Item::Str(ref x) => write!(f, "{:?}", x),
+            Item::Op(x) => write!(f, "{}", x),
+
+            Item::Array(ref x) => {
+                let _ = write!(f, "[")?;
+                let _ = write!(f, "{}", x.iter().format_default(" "))?;
+                write!(f, "]")
+            }
+
+            Item::Block(ref x) => {
+                let _ = write!(f, "{{")?;
+                let _ = write!(f, "{}", x.iter().format_default(" "))?;
+                write!(f, "}}")
+            }
+        }
+    }
 }
 
 impl Item {
@@ -299,6 +322,7 @@ impl Interpreter {
                 Item::Op('[') => self.marker()?,
                 Item::Op(']') => self.slice()?,
                 Item::Op('~') => self.neg()?,
+                Item::Op('`') => self.backtick()?,
                 Item::Op(',') => self.array()?,
                 Item::Op('a') => self.builtin_abs()?,
                 Item::Op('i') => self.builtin_if()?,
@@ -489,6 +513,7 @@ impl Interpreter {
             Item::Num(x) => self.push(Item::Num(!x)),
 
             Item::Array(x) => {
+                // Error here
                 for item in x.iter().cloned() {
                     self.push(item)
                 }
@@ -514,6 +539,13 @@ impl Interpreter {
 
             _ => unimplemented!()
         }
+        Ok(())
+    }
+
+    /// `
+    fn backtick(&mut self) -> GSErr {
+        let item = self.pop()?.to_string();
+        self.push(Item::Str(item));
         Ok(())
     }
 
@@ -915,6 +947,25 @@ mod tests {
     }
 
     // test`
+    #[test]
+    fn backtick_num() {
+        assert_eq!(eval("1`"), [Str!("1")]);
+    }
+
+    #[test]
+    fn backtick_str() {
+        assert_eq!(eval("\"1\"`"), [Str!("\"1\"")]);
+    }
+
+    #[test]
+    fn backtick_array() {
+        assert_eq!(eval("[1 [2] \"asdf\"]`"), [Str!("[1 [2] \"asdf\"]")]);
+    }
+
+    #[test]
+    fn backtick_block() {
+        assert_eq!(eval("{1}`"), [Str!("{1}")]);
+    }
 
     // test!
     #[test]

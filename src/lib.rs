@@ -8,7 +8,7 @@ use rand::distributions::{IndependentSample, Range};
 use std::{str, iter};
 use itertools::Itertools;
 
-pub type CharStream<'a> = iter::Peekable<str::Chars<'a>>;
+type CharStream<'a> = iter::Peekable<str::Chars<'a>>;
 
 #[derive(Debug, PartialEq)]
 pub enum GSError {
@@ -80,7 +80,7 @@ fn coerce((x, y): (Item, Item)) -> (Item, Item) {
     (x, y)
 }
 
-pub fn lex_item(mut chars: &mut CharStream) -> Option<Result<Item, GSError>> {
+fn lex_item(mut chars: &mut CharStream) -> Option<Result<Item, GSError>> {
     loop {
         let item = match chars.next() {
             Some('#') => {

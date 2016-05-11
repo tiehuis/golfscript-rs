@@ -265,14 +265,14 @@ impl Interpreter {
         Ok((self.pop()?, self.pop()?))
     }
 
-    /// Execute a string, returning the result of execution.
-    pub fn exec(&mut self, input: &str) -> Result<String, GSError> {
+    /// Execute a string, returning the stack state after execution
+    pub fn exec(&mut self, input: &str) -> Result<&[Item], GSError> {
         let items = lex(&input)?;
         self.exec_items(&items)
     }
 
-    /// Execute a sequence of items, returning the result of execution.
-    pub fn exec_items(&mut self, items: &[Item])-> Result<String, GSError> {
+    /// Execute a sequence of items, returning the stack state after execution
+    pub fn exec_items(&mut self, items: &[Item])-> Result<&[Item], GSError> {
         for item in items.iter().cloned() {
             match item {
                 // Can we restructure to allow for rebound variables?
@@ -318,7 +318,7 @@ impl Interpreter {
             }
         }
 
-        Ok(format!("{:?}", self.stack))
+        Ok(&self.stack)
     }
 
     /// +
@@ -865,38 +865,53 @@ impl Interpreter {
 }
 
 #[allow(unused_imports)]
+#[cfg(test)]
 mod tests {
     use super::*;
     use super::Item::*;
 
-    macro_rules! eval {
-        ($input:expr) => {
-            {
-                let mut it = Interpreter::new();
-                it.exec(&$input)
-            }
-        };
+    // Helper macros for initializing items
+    macro_rules! Array {
+        ($x:expr) => {{ Array(Box::new($x)) }};
     }
+
+    macro_rules! Str {
+        ($x:expr) => {{ Str($x.to_string()) }};
+    }
+
+    macro_rules! Block {
+        ($x:expr) => {{ Block(Box::new($x)) }};
+    }
+
+    fn eval_(input: &str) -> Result<Vec<Item>, GSError> {
+        let mut it = Interpreter::new();
+        it.exec(&input).map(|x| x.to_vec())
+    }
+
+    fn eval(input: &str) -> Vec<Item> {
+        eval_(&input).unwrap()
+    }
+
 
     // test~
     #[test]
     fn negate_num() {
-        assert_eq!(eval!("5~"), Ok("[Num(-6)]".to_string()));
+        assert_eq!(eval("5~"), [Num(-6)])
     }
 
     #[test]
     fn negate_str() {
-        assert_eq!(eval!("\"1 2+\"~"), Ok("[Num(3)]".to_string()));
+        assert_eq!(eval("\"1 2+\"~"), [Num(3)]);
     }
 
     #[test]
     fn negate_array() {
-        assert_eq!(eval!("[1 2 3]~"), Ok("[Num(1), Num(2), Num(3)]".to_string()));
+        assert_eq!(eval("[1 2 3]~"), [Num(1), Num(2), Num(3)]);
     }
 
     #[test]
     fn negate_block() {
-        assert_eq!(eval!("{1 2+}~"), Ok("[Num(3)]".to_string()));
+        assert_eq!(eval("{1 2+}~"), [Num(3)]);
     }
 
     // test`
@@ -904,106 +919,101 @@ mod tests {
     // test!
     #[test]
     fn exclaim_num() {
-        assert_eq!(eval!("0!"), Ok("[Num(1)]".to_string()));
-        assert_eq!(eval!("1!"), Ok("[Num(0)]".to_string()));
+        assert_eq!(eval("0!"), [Num(1)]);
+        assert_eq!(eval("1!"), [Num(0)]);
     }
 
     #[test]
     fn exclaim_str() {
-        assert_eq!(eval!("\"\"!"), Ok("[Num(1)]".to_string()));
-        assert_eq!(eval!("\"asdf\"!"), Ok("[Num(0)]".to_string()));
+        assert_eq!(eval("\"\"!"), [Num(1)]);
+        assert_eq!(eval("\"asdf\"!"), [Num(0)]);
     }
 
     #[test]
     fn exclaim_array() {
-        assert_eq!(eval!("[]!"), Ok("[Num(1)]".to_string()));
-        assert_eq!(eval!("[1 4]!"), Ok("[Num(0)]".to_string()));
+        assert_eq!(eval("[]!"), [Num(1)]);
+        assert_eq!(eval("[1 4]!"), [Num(0)]);
     }
 
     #[test]
     fn exclaim_block() {
-        assert_eq!(eval!("{}!"), Ok("[Num(1)]".to_string()));
-        assert_eq!(eval!("{5}!"), Ok("[Num(0)]".to_string()));
+        assert_eq!(eval("{}!"), [Num(1)]);
+        assert_eq!(eval("{5}!"), [Num(0)]);
     }
 
     // test@
     #[test]
     fn at() {
-        assert_eq!(eval!("1 2 3 4@"), Ok("[Num(1), Num(3), Num(4), Num(2)]".to_string()));
+        assert_eq!(eval("1 2 3 4@"), [Num(1), Num(3), Num(4), Num(2)]);
     }
 
     // test#
     #[test]
     fn hash() {
-        assert_eq!(eval!("1 # Here is a comment"), Ok("[Num(1)]".to_string()));
+        assert_eq!(eval("1 # Here is a comment"), [Num(1)]);
     }
 
     // test$
     #[test]
     fn dollar_num() {
-        assert_eq!(eval!("1 2 3 4 5 1$"),
-            Ok("[Num(1), Num(2), Num(3), Num(4), Num(5), Num(4)]".to_string()));
+        assert_eq!(eval("1 2 3 4 5 1$"), [Num(1), Num(2), Num(3), Num(4), Num(5), Num(4)]);
     }
 
     #[test]
     fn dollar_str() {
-        assert_eq!(eval!("\"asdf\"$"), Ok("[Str(\"adfs\")]".to_string()));
+        assert_eq!(eval("\"asdf\"$"), [Str!("adfs")]);
     }
 
     // test+
     #[test]
     fn add_num() {
-        assert_eq!(eval!("5 7+"), Ok("[Num(12)]".to_string()));
+        assert_eq!(eval("5 7+"), [Num(12)]);
     }
 
     #[test]
     fn add_str() {
-        assert_eq!(eval!("\"a\"\"b\"+"), Ok("[Str(\"ab\")]".to_string()));
+        assert_eq!(eval("\"a\"\"b\"+"), [Str!("ab")]);
     }
 
     #[test]
     fn add_array() {
-        assert_eq!(eval!("[1][2]+"), Ok("[Array([Num(1), Num(2)])]".to_string()));
+        assert_eq!(eval("[1][2]+"), [Array!([Num(1), Num(2)])]);
     }
 
     #[test]
     fn add_block() {
-        assert_eq!(eval!("{1}{2-}+"), Ok("[Block([Num(1), Num(2), Op('-')])]".to_string()));
+        assert_eq!(eval("{1}{2-}+"), [Block!([Num(1), Num(2), Op('-')])]);
     }
 
     // test-
     #[test]
     fn sub_num() {
-        assert_eq!(eval!("-1"), Ok("[Num(-1)]".to_string()));
-        assert_eq!(eval!("1 2-3+"), Ok("[Num(1), Num(-1)]".to_string()));
-        assert_eq!(eval!("1 2 -3+"), Ok("[Num(1), Num(-1)]".to_string()));
-        assert_eq!(eval!("1 2- 3+"), Ok("[Num(2)]".to_string()));
+        assert_eq!(eval("-1"), [Num(-1)]);
+        assert_eq!(eval("1 2-3+"), [Num(1), Num(-1)]);
+        assert_eq!(eval("1 2 -3+"), [Num(1), Num(-1)]);
+        assert_eq!(eval("1 2- 3+"), [Num(2)]);
     }
 
     fn sub_array() {
-        assert_eq!(eval!("[5 2 5 4 1 1][1 2]-"),
-                   Ok("[Num(5), Num(5), Num(4)]".to_string()));
+        assert_eq!(eval("[5 2 5 4 1 1][1 2]-"), [Num(5), Num(5), Num(4)]);
     }
 
     // test*
     #[test]
     fn mul_num() {
-        assert_eq!(eval!("2 4*"), Ok("[Num(8)]".to_string()));
+        assert_eq!(eval("2 4*"), [Num(8)]);
     }
 
     #[test]
     fn mul_num_str() {
-        assert_eq!(eval!("\"asdf\"3*"), Ok("[Str(\"asdfasdfasdf\")]".to_string()));
-        assert_eq!(eval!("3\"asdf\"*"), Ok("[Str(\"asdfasdfasdf\")]".to_string()));
+        assert_eq!(eval("\"asdf\"3*"), [Str!("asdfasdfasdf")]);
+        assert_eq!(eval("3\"asdf\"*"), [Str!("asdfasdfasdf")]);
     }
 
     #[test]
     fn mul_num_array() {
-        assert_eq!(eval!("[1 2]2*"),
-                   Ok("[Array([Num(1), Num(2), Num(1), Num(2)])]".to_string()));
-
-        assert_eq!(eval!("2[1 2]*"),
-                   Ok("[Array([Num(1), Num(2), Num(1), Num(2)])]".to_string()));
+        assert_eq!(eval("[1 2]2*"), [Array!([Num(1), Num(2), Num(1), Num(2)])]);
+        assert_eq!(eval("2[1 2]*"), [Array!([Num(1), Num(2), Num(1), Num(2)])]);
     }
 
     fn mul_join() {
@@ -1015,142 +1025,142 @@ mod tests {
     // test/
     #[test]
     fn div_num() {
-        assert_eq!(eval!("7 3/"), Ok("[Num(2)]".to_string()));
+        assert_eq!(eval("7 3/"), [Num(2)]);
     }
 
     // test%
     #[test]
     fn mod_num() {
-        assert_eq!(eval!("7 3%"), Ok("[Num(1)]".to_string()));
+        assert_eq!(eval("7 3%"), [Num(1)]);
     }
 
     // test|
     #[test]
     fn or_num() {
-        assert_eq!(eval!("5 3|"), Ok("[Num(7)]".to_string()));
+        assert_eq!(eval("5 3|"), [Num(7)]);
     }
 
     // test&
     #[test]
     fn and_num() {
-        assert_eq!(eval!("5 3&"), Ok("[Num(1)]".to_string()));
+        assert_eq!(eval("5 3&"), [Num(1)]);
     }
 
     // test^
     #[test]
     fn xor_num() {
-        assert_eq!(eval!("5 3^"), Ok("[Num(6)]".to_string()));
+        assert_eq!(eval("5 3^"), [Num(6)]);
     }
 
     // test[]
     #[test]
     fn slice() {
-        assert_eq!(eval!("[1 2]"), Ok("[Array([Num(1), Num(2)])]".to_string()));
-        assert_eq!(eval!("1 2 [\\]"), Ok("[Array([Num(2), Num(1)])]".to_string()));
+        assert_eq!(eval("[1 2]"), [Array!([Num(1), Num(2)])]);
+        assert_eq!(eval("1 2 [\\]"), [Array!([Num(2), Num(1)])]);
     }
 
     // test\
     #[test]
     fn swap() {
-        assert_eq!(eval!("1 2 3\\"), Ok("[Num(1), Num(3), Num(2)]".to_string()));
+        assert_eq!(eval("1 2 3\\"), [Num(1), Num(3), Num(2)]);
     }
 
     // test;
     #[test]
     fn pop_discard() {
-        assert_eq!(eval!("1;"), Ok("[]".to_string()));
-        assert_eq!(eval!("2 1;"), Ok("[Num(2)]".to_string()));
+        assert_eq!(eval("1;"), []);
+        assert_eq!(eval("2 1;"), [Num(2)]);
     }
 
     // test<
     #[test]
     fn lt_num() {
-        assert_eq!(eval!("3 4<"), Ok("[Num(1)]".to_string()));
+        assert_eq!(eval("3 4<"), [Num(1)]);
     }
 
     #[test]
     fn lt_str() {
-        assert_eq!(eval!("\"asdf\"\"asdg\"<"), Ok("[Num(1)]".to_string()));
+        assert_eq!(eval("\"asdf\"\"asdg\"<"), [Num(1)]);
     }
 
     #[test]
     fn lt_num_array() {
-        assert_eq!(eval!("[1 2 3]2<"), Ok("[Array([Num(1), Num(2)])]".to_string()));
+        assert_eq!(eval("[1 2 3]2<"), [Array!([Num(1), Num(2)])]);
     }
 
     // test>
     #[test]
     fn gt_num() {
-        assert_eq!(eval!("3 4>"), Ok("[Num(0)]".to_string()));
+        assert_eq!(eval("3 4>"), [Num(0)]);
     }
 
     #[test]
     fn gt_str() {
-        assert_eq!(eval!("\"asdf\"\"asdg\">"), Ok("[Num(0)]".to_string()));
+        assert_eq!(eval("\"asdf\"\"asdg\">"), [Num(0)]);
     }
 
     #[test]
     fn gt_num_array() {
-        assert_eq!(eval!("[1 2 3]2>"), Ok("[Array([Num(3)])]".to_string()));
+        assert_eq!(eval("[1 2 3]2>"), [Array!([Num(3)])]);
     }
 
     // test=
     #[test]
     fn eq_num() {
-        assert_eq!(eval!("3 4="), Ok("[Num(0)]".to_string()));
+        assert_eq!(eval("3 4="), [Num(0)]);
     }
 
     #[test]
     fn eq_str() {
-        assert_eq!(eval!("\"asdf\"\"asdg\">"), Ok("[Num(0)]".to_string()));
+        assert_eq!(eval("\"asdf\"\"asdg\">"), [Num(0)]);
     }
 
     #[test]
     fn eq_num_array() {
-        assert_eq!(eval!("[1 2 3]2="), Ok("[Num(3)]".to_string()));
-        assert_eq!(eval!("[1 2 3]-1="), Ok("[Num(3)]".to_string()));
+        assert_eq!(eval("[1 2 3]2="), [Num(3)]);
+        assert_eq!(eval("[1 2 3]-1="), [Num(3)]);
     }
 
     // test?
     #[test]
     fn qmark_num() {
-        assert_eq!(eval!("2 8?"), Ok("[Num(256)]".to_string()));
+        assert_eq!(eval("2 8?"), [Num(256)]);
     }
 
     #[test]
     fn qmark_num_array() {
-        assert_eq!(eval!("5 [4 3 5 1]?"), Ok("[Num(2)]".to_string()));
+        assert_eq!(eval("5 [4 3 5 1]?"), [Num(2)]);
     }
 
     // test(
     #[test]
     fn dec_num() {
-        assert_eq!(eval!("5("), Ok("[Num(4)]".to_string()));
+        assert_eq!(eval("5("), [Num(4)]);
     }
 
     #[test]
     fn dec_array() {
-        assert_eq!(eval!("[1 2 3]("), Ok("[Array([Num(2), Num(3)]), Num(1)]".to_string()));
+        assert_eq!(eval("[1 2 3]("), [Array!([Num(2), Num(3)]), Num(1)]);
     }
 
     // test)
     #[test]
     fn inc_num() {
-        assert_eq!(eval!("5)"), Ok("[Num(6)]".to_string()));
+        assert_eq!(eval("5)"), [Num(6)]);
     }
 
     #[test]
     fn inc_array() {
-        assert_eq!(eval!("[1 2 3])"), Ok("[Array([Num(1), Num(2)]), Num(3)]".to_string()));
+        assert_eq!(eval("[1 2 3])"), [Array!([Num(1), Num(2)]), Num(3)]);
     }
 
     // test if
     fn builtin_if() {
-        assert_eq!(eval!("1 2 3i"), Ok("[Num(2)]".to_string()));
+        assert_eq!(eval("1 2 3i"), [Num(2)]);
     }
 
     // test abs
     fn builtin_abs() {
-        assert_eq!(eval!("-2a"), Ok("[Num(2)]".to_string()));
+        assert_eq!(eval("-2a"), [Num(2)]);
     }
 }
